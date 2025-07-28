@@ -180,7 +180,6 @@ function extractParameters(code) {
 
 // 格式化Python错误信息
 function formatPythonError(error) {
-    // 简化错误信息
     const simplifiedError = error
         .replace(/File "<exec>", line (\d+)/g, '第$1行')
         .replace(/SyntaxError: /g, '语法错误: ')
@@ -191,8 +190,10 @@ function formatPythonError(error) {
         .replace(/unexpected indent/g, '意外的缩进')
         .replace(/expected an indented block/g, '需要缩进的代码块')
         .replace(/unindent does not match .* level/g, '缩进级别不匹配')
+        .replace(/invalid character/g, '无效的字符')
+        .replace(/invalid identifier/g, '无效的标识符')
         .replace(/position: \d+/g, '');
-    
+
     return simplifiedError;
 }
 
@@ -207,8 +208,11 @@ function getErrorExplanation(error) {
     if (error.includes('名称错误')) {
         return '函数名或变量名不符合命名规则，只能使用字母、数字和下划线，且不能以数字开头。';
     }
-    if (error.includes('无效的字符')) {
-        return '代码中包含Python不允许的特殊字符，请检查函数名或参数名是否合法。';
+    if (error.includes('无效的字符') || error.includes('invalid character')) {
+    return '代码中包含Python不允许的特殊字符，请检查函数名或参数名是否含有中文符号、空格或其他非法字符。';
+    }
+    if (error.includes('无效的标识符') || error.includes('invalid identifier') || error.includes('cannot assign to')) {
+    return '函数名或变量名不符合命名规则，只能使用字母、数字和下划线，且不能以数字开头。';
     }
     if (error.includes('括号')) {
         return '括号使用不匹配或位置不正确，请检查圆括号、方括号或花括号是否成对出现。';
@@ -250,7 +254,22 @@ function getErrorSolution(error) {
             <p>4. 确保函数定义末尾没有多余的括号</p>
         `;
     }
-    
+    if (error.includes('无效的字符') || error.includes('invalid character')) {
+    return `
+        <p>1. 检查函数名或参数中是否包含中文符号（如“，”、“：”、“（）”）</p>
+        <p>2. 确保使用英文输入法输入符号</p>
+        <p>3. 函数名不能包含空格或特殊字符（如@、#、$等）</p>
+        <p>4. 参考右侧“无效函数名”示例</p>
+    `;
+    }
+    if (error.includes('无效的标识符') || error.includes('invalid identifier') || error.includes('cannot assign to')) {
+    return `
+        <p>1. 函数名不能以数字开头（如 <code>def 2add()</code> 是错误的）</p>
+        <p>2. 函数名只能包含字母、数字和下划线</p>
+        <p>3. 避免使用Python关键字（如 <code>if</code>、<code>for</code>、<code>class</code>）作为函数名</p>
+        <p>4. 使用有意义的英文单词命名函数（如 <code>def add_numbers()</code>）</p>
+    `;
+    }
     return `
         <p>1. 检查代码是否有拼写错误</p>
         <p>2. 参考右侧的常见错误示例</p>
