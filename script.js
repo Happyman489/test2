@@ -138,7 +138,6 @@ async function checkSyntax() {
                 
                 <div class="error-content">
                     <div class="error-scroll">
-                       // <p><strong>错误位置:</strong> ${errorLine}</p>
                         <p><strong>错误详情:</strong></p>
                         <pre>${errorMessage}</pre>
                     </div>
