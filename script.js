@@ -2,12 +2,43 @@
 let pyodide;
 let isPyodideLoaded = false;
 
-// DOM元素
-const codeInput = document.getElementById('code-input');
-const checkBtn = document.getElementById('check-btn');
-const resetBtn = document.getElementById('reset-btn');
-const feedbackContent = document.getElementById('feedback-content');
-const loadingIndicator = document.getElementById('loading');
+// DOM元素引用
+let codeInput, checkBtn, resetBtn, feedbackContent, loadingIndicator;
+
+// 初始化DOM元素引用
+function initDOMReferences() {
+    codeInput = document.getElementById('code-input');
+    checkBtn = document.getElementById('check-btn');
+    resetBtn = document.getElementById('reset-btn');
+    feedbackContent = document.getElementById('feedback-content');
+    loadingIndicator = document.getElementById('loading');
+    
+    // 确保所有DOM元素都已找到
+    if (!codeInput || !checkBtn || !resetBtn || !feedbackContent || !loadingIndicator) {
+        console.error("无法找到必要的DOM元素");
+        return false;
+    }
+    return true;
+}
+
+// 设置事件监听器
+function setupEventListeners() {
+    checkBtn.addEventListener('click', checkSyntax);
+    resetBtn.addEventListener('click', resetCode);
+    
+    // 键盘快捷键
+    document.addEventListener('keydown', (e) => {
+        // Ctrl + Enter 检查语法
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+            checkSyntax();
+        }
+        
+        // Ctrl + R 重置代码
+        if ((e.ctrlKey || e.metaKey) && e.key === 'r') {
+            resetCode();
+        }
+    });
+}
 
 // 初始化Pyodide
 async function initializePyodide() {
@@ -126,7 +157,6 @@ async function checkSyntax() {
     } catch (error) {
         // 优化错误提示
         const errorMessage = formatPythonError(error.message);
-        const errorLine = extractErrorLine(error.message);
         const solution = getErrorSolution(error.message);
         
         feedbackContent.innerHTML = `
@@ -314,22 +344,31 @@ function resetCode() {
     `;
 }
 
-// 事件监听器
-checkBtn.addEventListener('click', checkSyntax);
-resetBtn.addEventListener('click', resetCode);
-
 // 初始化应用
-initializePyodide();
+function initApp() {
+    if (initDOMReferences()) {
+        setupEventListeners();
+        initializePyodide();
+    } else {
+        console.error("初始化失败：无法找到必要的DOM元素");
+        // 显示错误信息
+        document.body.innerHTML = `
+            <div style="text-align: center; padding: 50px; font-family: Arial, sans-serif;">
+                <h1 style="color: #c62828;">初始化错误</h1>
+                <p>无法加载应用程序所需的元素，请尝试以下操作：</p>
+                <ul style="text-align: left; max-width: 500px; margin: 20px auto;">
+                    <li>刷新页面</li>
+                    <li>检查浏览器控制台查看详细错误</li>
+                    <li>确保所有脚本文件已正确加载</li>
+                </ul>
+            </div>
+        `;
+    }
+}
 
-// 添加键盘快捷键
-document.addEventListener('keydown', (e) => {
-    // Ctrl + Enter 检查语法
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        checkSyntax();
-    }
-    
-    // Ctrl + R 重置代码
-    if ((e.ctrlKey || e.metaKey) && e.key === 'r') {
-        resetCode();
-    }
-});
+// 当页面完全加载后初始化应用
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initApp);
+} else {
+    initApp();
+}
