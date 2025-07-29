@@ -2,12 +2,43 @@
 let pyodide;
 let isPyodideLoaded = false;
 
-// DOM元素
-const codeInput = document.getElementById('code-input');
-const checkBtn = document.getElementById('check-btn');
-const resetBtn = document.getElementById('reset-btn');
-const feedbackContent = document.getElementById('feedback-content');
-const loadingIndicator = document.getElementById('loading');
+// DOM元素引用
+let codeInput, checkBtn, resetBtn, feedbackContent, loadingIndicator;
+
+// 初始化DOM元素引用
+function initDOMReferences() {
+    codeInput = document.getElementById('code-input');
+    checkBtn = document.getElementById('check-btn');
+    resetBtn = document.getElementById('reset-btn');
+    feedbackContent = document.getElementById('feedback-content');
+    loadingIndicator = document.getElementById('loading');
+    
+    // 确保所有DOM元素都已找到
+    if (!codeInput || !checkBtn || !resetBtn || !feedbackContent || !loadingIndicator) {
+        console.error("无法找到必要的DOM元素");
+        return false;
+    }
+    return true;
+}
+
+// 设置事件监听器
+function setupEventListeners() {
+    checkBtn.addEventListener('click', checkSyntax);
+    resetBtn.addEventListener('click', resetCode);
+    
+    // 键盘快捷键
+    document.addEventListener('keydown', (e) => {
+        // Ctrl + Enter 检查语法
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+            checkSyntax();
+        }
+        
+        // Ctrl + R 重置代码
+        if ((e.ctrlKey || e.metaKey) && e.key === 'r') {
+            resetCode();
+        }
+    });
+}
 
 // 初始化Pyodide
 async function initializePyodide() {
@@ -126,7 +157,6 @@ async function checkSyntax() {
     } catch (error) {
         // 优化错误提示
         const errorMessage = formatPythonError(error.message);
-        const errorLine = extractErrorLine(error.message);
         const solution = getErrorSolution(error.message);
         
         feedbackContent.innerHTML = `
@@ -180,9 +210,8 @@ function extractParameters(code) {
 
 // 格式化Python错误信息
 function formatPythonError(error) {
-    // 简化错误信息
     const simplifiedError = error
-        //.replace(/File "<exec>", line (\d+)/g, '第$1行')
+        .replace(/File "<exec>", line (\d+)/g, '第$1行')
         .replace(/SyntaxError: /g, '语法错误: ')
         .replace(/IndentationError: /g, '缩进错误: ')
         .replace(/NameError: /g, '名称错误: ')
@@ -191,26 +220,44 @@ function formatPythonError(error) {
         .replace(/unexpected indent/g, '意外的缩进')
         .replace(/expected an indented block/g, '需要缩进的代码块')
         .replace(/unindent does not match .* level/g, '缩进级别不匹配')
-        .replace(/position: \d+/g, '');
+        .replace(/invalid character/g, '无效的字符')
+        .replace(/invalid identifier/g, '无效的标识符')
+        .replace(/cannot assign to/g, '不能分配给')
+        .replace(/position: \d+/g, '')
+        .replace(/unexpected character/g, '意外的字符')
+        // 添加以下两行处理数字开头的函数名
+        .replace(/invalid decimal literal/g, '无效的函数名（不能以数字开头）')
+        .replace(/invalid token/g, '无效的标识符');
     
     return simplifiedError;
 }
 
 // 获取错误解释
 function getErrorExplanation(error) {
-    if (error.includes('语法错误')) {
+    const lowerError = error.toLowerCase();
+    
+    // 添加对数字开头函数名的检测
+    if (lowerError.includes('无效的函数名（不能以数字开头）') || 
+        lowerError.includes('invalid decimal literal')) {
+        return '函数名不能以数字开头，这是Python的语法规则。';
+    }
+    
+    if (lowerError.includes('语法错误') || lowerError.includes('syntaxerror')) {
         return '函数定义结构不正确，请检查def关键字、函数名、括号和冒号的使用。';
     }
-    if (error.includes('缩进错误')) {
+    if (lowerError.includes('缩进错误') || lowerError.includes('indentationerror')) {
         return 'Python使用缩进来表示代码块，函数体必须正确缩进（通常为4个空格）。';
     }
-    if (error.includes('名称错误')) {
+    if (lowerError.includes('名称错误') || lowerError.includes('nameerror') || 
+        lowerError.includes('无效的标识符') || lowerError.includes('invalid identifier') || 
+        lowerError.includes('cannot assign to')) {
         return '函数名或变量名不符合命名规则，只能使用字母、数字和下划线，且不能以数字开头。';
     }
-    if (error.includes('无效的字符')) {
-        return '代码中包含Python不允许的特殊字符，请检查函数名或参数名是否合法。';
+    if (lowerError.includes('无效的字符') || lowerError.includes('invalid character') || 
+        lowerError.includes('unexpected character')) {
+        return '代码中包含Python不允许的特殊字符，请检查函数名或参数名是否含有中文符号、空格或其他非法字符。';
     }
-    if (error.includes('括号')) {
+    if (lowerError.includes('括号')) {
         return '括号使用不匹配或位置不正确，请检查圆括号、方括号或花括号是否成对出现。';
     }
     return '请仔细检查代码结构，确保符合Python函数定义的基本规则。';
@@ -218,7 +265,20 @@ function getErrorExplanation(error) {
 
 // 获取错误解决方案
 function getErrorSolution(error) {
-    if (error.includes('语法错误') || error.includes('无效的语法')) {
+    const lowerError = error.toLowerCase();
+    
+    // 添加对数字开头函数名的解决方案
+    if (lowerError.includes('无效的函数名（不能以数字开头）') || 
+        lowerError.includes('invalid decimal literal')) {
+        return `
+            <p>1. 函数名不能以数字开头（如 <code>def 123func()</code> 是错误的）</p>
+            <p>2. 在数字前添加字母或下划线（如 <code>def func123()</code>）</p>
+            <p>3. 使用纯字母开头的函数名</p>
+            <p>4. 参考右侧"无效函数名"示例</p>
+        `;
+    }
+    
+    if (lowerError.includes('语法错误') || lowerError.includes('syntaxerror') || lowerError.includes('无效的语法')) {
         return `
             <p>1. 确保函数定义以 <code>def</code> 关键字开头</p>
             <p>2. 检查函数名后是否有括号 <code>()</code></p>
@@ -226,7 +286,7 @@ function getErrorSolution(error) {
             <p>4. 检查参数之间是否有逗号分隔</p>
         `;
     }
-    if (error.includes('缩进错误')) {
+    if (lowerError.includes('缩进错误') || lowerError.includes('indentationerror')) {
         return `
             <p>1. 函数体必须缩进（通常为4个空格）</p>
             <p>2. 确保整个函数体使用一致的缩进</p>
@@ -234,7 +294,9 @@ function getErrorSolution(error) {
             <p>4. 检查是否有不必要的缩进</p>
         `;
     }
-    if (error.includes('名称错误') || error.includes('无效函数名')) {
+    if (lowerError.includes('名称错误') || lowerError.includes('nameerror') || 
+        lowerError.includes('无效的标识符') || lowerError.includes('invalid identifier') || 
+        lowerError.includes('cannot assign to')) {
         return `
             <p>1. 函数名只能包含字母、数字和下划线</p>
             <p>2. 函数名不能以数字开头</p>
@@ -242,7 +304,16 @@ function getErrorSolution(error) {
             <p>4. 使用有意义的英文单词命名函数</p>
         `;
     }
-    if (error.includes('括号')) {
+    if (lowerError.includes('无效的字符') || lowerError.includes('invalid character') || 
+        lowerError.includes('unexpected character')) {
+        return `
+            <p>1. 检查函数名或参数中是否包含中文符号（如"，"、"："、"（）"）</p>
+            <p>2. 确保使用英文输入法输入符号</p>
+            <p>3. 函数名不能包含空格或特殊字符（如@、#、$等）</p>
+            <p>4. 参考右侧"无效函数名"示例</p>
+        `;
+    }
+    if (lowerError.includes('括号')) {
         return `
             <p>1. 检查所有括号是否成对出现</p>
             <p>2. 确保参数列表使用圆括号 <code>()</code></p>
@@ -273,22 +344,31 @@ function resetCode() {
     `;
 }
 
-// 事件监听器
-checkBtn.addEventListener('click', checkSyntax);
-resetBtn.addEventListener('click', resetCode);
-
 // 初始化应用
-initializePyodide();
+function initApp() {
+    if (initDOMReferences()) {
+        setupEventListeners();
+        initializePyodide();
+    } else {
+        console.error("初始化失败：无法找到必要的DOM元素");
+        // 显示错误信息
+        document.body.innerHTML = `
+            <div style="text-align: center; padding: 50px; font-family: Arial, sans-serif;">
+                <h1 style="color: #c62828;">初始化错误</h1>
+                <p>无法加载应用程序所需的元素，请尝试以下操作：</p>
+                <ul style="text-align: left; max-width: 500px; margin: 20px auto;">
+                    <li>刷新页面</li>
+                    <li>检查浏览器控制台查看详细错误</li>
+                    <li>确保所有脚本文件已正确加载</li>
+                </ul>
+            </div>
+        `;
+    }
+}
 
-// 添加键盘快捷键
-document.addEventListener('keydown', (e) => {
-    // Ctrl + Enter 检查语法
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        checkSyntax();
-    }
-    
-    // Ctrl + R 重置代码
-    if ((e.ctrlKey || e.metaKey) && e.key === 'r') {
-        resetCode();
-    }
-});
+// 当页面完全加载后初始化应用
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initApp);
+} else {
+    initApp();
+}
