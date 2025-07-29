@@ -1,7 +1,216 @@
-// 修改 getErrorExplanation 函数
+// 全局变量
+let pyodide;
+let isPyodideLoaded = false;
+
+// DOM元素
+const codeInput = document.getElementById('code-input');
+const checkBtn = document.getElementById('check-btn');
+const resetBtn = document.getElementById('reset-btn');
+const feedbackContent = document.getElementById('feedback-content');
+const loadingIndicator = document.getElementById('loading');
+
+// 初始化Pyodide
+async function initializePyodide() {
+    try {
+        loadingIndicator.classList.remove('hidden');
+        feedbackContent.innerHTML = `
+            <div class="loading">
+                <div class="spinner"></div>
+                <p>正在加载Python环境（首次加载约需10秒）...</p>
+                <p class="small">请耐心等待，只需要加载一次</p>
+            </div>
+        `;
+        
+        // 加载Pyodide
+        pyodide = await loadPyodide({
+            indexURL: "https://cdn.jsdelivr.net/pyodide/v0.23.4/full/",
+            stdout: () => {}, // 忽略标准输出
+            stderr: () => {}  // 忽略标准错误
+        });
+        
+        isPyodideLoaded = true;
+        loadingIndicator.classList.add('hidden');
+        feedbackContent.innerHTML = `
+            <div class="status">
+                <i class="fas fa-check-circle" style="color:#4caf50; font-size:2rem;"></i>
+                <p>Python环境已就绪！</p>
+                <p>现在可以编写并检查Python函数了</p>
+            </div>
+        `;
+    } catch (error) {
+        feedbackContent.innerHTML = `
+            <div class="error">
+                <div class="error-header">
+                    <i class="fas fa-exclamation-triangle fa-2x"></i>
+                    <h3 class="error-title">环境加载失败</h3>
+                </div>
+                <div class="error-content">
+                    <p><strong>错误信息:</strong> ${error.message}</p>
+                    <p>请检查网络连接后刷新页面重试</p>
+                    <div class="error-solution">
+                        <h4>解决方案:</h4>
+                        <p>1. 确保您的设备已连接到互联网</p>
+                        <p>2. 尝试刷新页面</p>
+                        <p>3. 如果问题持续，请联系信息技术老师</p>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+}
+
+// 检查语法
+async function checkSyntax() {
+    if (!isPyodideLoaded) {
+        alert("Python环境仍在加载中，请稍候...");
+        return;
+    }
+    
+    const code = codeInput.value.trim();
+    if (!code) {
+        feedbackContent.innerHTML = `
+            <div class="error">
+                <div class="error-header">
+                    <i class="fas fa-exclamation-circle fa-2x"></i>
+                    <h3 class="error-title">代码为空</h3>
+                </div>
+                <div class="error-content">
+                    <p>请输入Python函数代码后再进行检查</p>
+                    <div class="error-solution">
+                        <h4>解决方案:</h4>
+                        <p>1. 在左侧编辑器中输入函数定义</p>
+                        <p>2. 确保代码以<code>def</code>关键字开头</p>
+                        <p>3. 点击"检查语法"按钮</p>
+                    </div>
+                </div>
+            </div>
+        `;
+        return;
+    }
+    
+    feedbackContent.innerHTML = `
+        <div class="loading">
+            <div class="spinner"></div>
+            <p>正在分析代码...</p>
+        </div>
+    `;
+    
+    try {
+        // 使用Pyodide检查语法
+        await pyodide.runPythonAsync(code);
+        
+        // 提取函数信息
+        const functionName = extractFunctionName(code);
+        const parameters = extractParameters(code);
+        
+        // 显示成功信息
+        feedbackContent.innerHTML = `
+            <div class="success">
+                <div style="display: flex; align-items: center; margin-bottom: 15px;">
+                    <i class="fas fa-check-circle fa-2x" style="margin-right: 10px;"></i>
+                    <h3>语法正确！</h3>
+                </div>
+                <p>函数定义符合Python语法规范</p>
+                <div class="preview">
+                    <div class="preview-title">函数定义预览：</div>
+                    <code style="font-size: 1.1rem;">${functionName}(${parameters})</code>
+                </div>
+                <div class="error-solution" style="margin-top: 20px; background: #e8f5e9; border-left-color: #4caf50;">
+                    <h4>下一步建议:</h4>
+                    <p>1. 尝试添加函数体实现具体功能</p>
+                    <p>2. 测试函数调用</p>
+                    <p>3. 添加文档字符串说明函数用途</p>
+                </div>
+            </div>
+        `;
+    } catch (error) {
+        // 优化错误提示
+        const errorMessage = formatPythonError(error.message);
+        const errorLine = extractErrorLine(error.message);
+        const solution = getErrorSolution(error.message);
+        
+        feedbackContent.innerHTML = `
+            <div class="error">
+                <div class="error-header">
+                    <i class="fas fa-exclamation-triangle fa-2x"></i>
+                    <h3 class="error-title">发现语法错误</h3>
+                </div>
+                
+                <div class="error-content">
+                    <div class="error-scroll">
+                        <p><strong>错误详情:</strong></p>
+                        <pre>${errorMessage}</pre>
+                    </div>
+                    
+                    <div class="error-explanation">
+                        <h4>错误分析：</h4>
+                        <p>${getErrorExplanation(errorMessage)}</p>
+                    </div>
+                    
+                    <div class="error-solution">
+                        <h4>解决方案:</h4>
+                        ${solution}
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+}
+
+// 提取错误行号
+function extractErrorLine(errorMessage) {
+    const lineMatch = errorMessage.match(/line (\d+)/);
+    if (lineMatch && lineMatch[1]) {
+        return `第 ${lineMatch[1]} 行`;
+    }
+    return "位置未知";
+}
+
+// 提取函数名
+function extractFunctionName(code) {
+    const match = code.match(/def\s+(\w+)\s*\(/);
+    return match ? match[1] : '未知函数';
+}
+
+// 提取参数
+function extractParameters(code) {
+    const match = code.match(/\(([^)]*)\)/);
+    return match ? match[1] : '';
+}
+
+// 格式化Python错误信息
+function formatPythonError(error) {
+    const simplifiedError = error
+        .replace(/File "<exec>", line (\d+)/g, '第$1行')
+        .replace(/SyntaxError: /g, '语法错误: ')
+        .replace(/IndentationError: /g, '缩进错误: ')
+        .replace(/NameError: /g, '名称错误: ')
+        .replace(/TypeError: /g, '类型错误: ')
+        .replace(/invalid syntax/g, '无效的语法')
+        .replace(/unexpected indent/g, '意外的缩进')
+        .replace(/expected an indented block/g, '需要缩进的代码块')
+        .replace(/unindent does not match .* level/g, '缩进级别不匹配')
+        .replace(/invalid character/g, '无效的字符')
+        .replace(/invalid identifier/g, '无效的标识符')
+        .replace(/cannot assign to/g, '不能分配给')
+        .replace(/position: \d+/g, '')
+        .replace(/unexpected character/g, '意外的字符')
+        // 添加以下两行处理数字开头的函数名
+        .replace(/invalid decimal literal/g, '无效的函数名（不能以数字开头）')
+        .replace(/invalid token/g, '无效的标识符');
+    
+    return simplifiedError;
+}
+
+// 获取错误解释
 function getErrorExplanation(error) {
-    // 将错误信息转换为小写以便匹配
     const lowerError = error.toLowerCase();
+    
+    // 添加对数字开头函数名的检测
+    if (lowerError.includes('无效的函数名（不能以数字开头）') || 
+        lowerError.includes('invalid decimal literal')) {
+        return '函数名不能以数字开头，这是Python的语法规则。';
+    }
     
     if (lowerError.includes('语法错误') || lowerError.includes('syntaxerror')) {
         return '函数定义结构不正确，请检查def关键字、函数名、括号和冒号的使用。';
@@ -24,10 +233,20 @@ function getErrorExplanation(error) {
     return '请仔细检查代码结构，确保符合Python函数定义的基本规则。';
 }
 
-// 修改 getErrorSolution 函数
+// 获取错误解决方案
 function getErrorSolution(error) {
-    // 将错误信息转换为小写以便匹配
     const lowerError = error.toLowerCase();
+    
+    // 添加对数字开头函数名的解决方案
+    if (lowerError.includes('无效的函数名（不能以数字开头）') || 
+        lowerError.includes('invalid decimal literal')) {
+        return `
+            <p>1. 函数名不能以数字开头（如 <code>def 123func()</code> 是错误的）</p>
+            <p>2. 在数字前添加字母或下划线（如 <code>def func123()</code>）</p>
+            <p>3. 使用纯字母开头的函数名</p>
+            <p>4. 参考右侧"无效函数名"示例</p>
+        `;
+    }
     
     if (lowerError.includes('语法错误') || lowerError.includes('syntaxerror') || lowerError.includes('无效的语法')) {
         return `
@@ -81,23 +300,36 @@ function getErrorSolution(error) {
     `;
 }
 
-// 修改 formatPythonError 函数（添加更多错误类型转换）
-function formatPythonError(error) {
-    const simplifiedError = error
-        .replace(/File "<exec>", line (\d+)/g, '第$1行')
-        .replace(/SyntaxError: /g, '语法错误: ')
-        .replace(/IndentationError: /g, '缩进错误: ')
-        .replace(/NameError: /g, '名称错误: ')
-        .replace(/TypeError: /g, '类型错误: ')
-        .replace(/invalid syntax/g, '无效的语法')
-        .replace(/unexpected indent/g, '意外的缩进')
-        .replace(/expected an indented block/g, '需要缩进的代码块')
-        .replace(/unindent does not match .* level/g, '缩进级别不匹配')
-        .replace(/invalid character/g, '无效的字符')
-        .replace(/invalid identifier/g, '无效的标识符')
-        .replace(/cannot assign to/g, '不能分配给')
-        .replace(/position: \d+/g, '')
-        .replace(/unexpected character/g, '意外的字符');
-
-    return simplifiedError;
+// 重置代码
+function resetCode() {
+    codeInput.value = `def 函数名称(参数1, 参数2):
+    # 在此处编写函数体
+    # 可以使用 return 返回结果
+    pass`;
+    feedbackContent.innerHTML = `
+        <div class="status">
+            <i class="fas fa-arrow-circle-left" style="font-size: 2rem; color: #90a4ae;"></i>
+            <p>请编写代码后点击"检查语法"按钮</p>
+        </div>
+    `;
 }
+
+// 事件监听器
+checkBtn.addEventListener('click', checkSyntax);
+resetBtn.addEventListener('click', resetCode);
+
+// 初始化应用
+initializePyodide();
+
+// 添加键盘快捷键
+document.addEventListener('keydown', (e) => {
+    // Ctrl + Enter 检查语法
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        checkSyntax();
+    }
+    
+    // Ctrl + R 重置代码
+    if ((e.ctrlKey || e.metaKey) && e.key === 'r') {
+        resetCode();
+    }
+});
