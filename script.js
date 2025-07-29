@@ -90,6 +90,102 @@ async function initializePyodide() {
     }
 }
 
+// 自定义错误检测函数
+function detectCustomErrors(code) {
+    // 1. 检测中文符号
+    const chineseChars = code.match(/[，：；（）]/g);
+    if (chineseChars) {
+        const uniqueChars = [...new Set(chineseChars)];
+        return `
+            <div class="error">
+                <div class="error-header">
+                    <i class="fas fa-exclamation-triangle fa-2x"></i>
+                    <h3 class="error-title">中文符号错误</h3>
+                </div>
+                <div class="error-content">
+                    <p><strong>错误详情:</strong> 检测到中文符号 ${uniqueChars.join(', ')}</p>
+                    <div class="error-explanation">
+                        <h4>错误分析：</h4>
+                        <p>Python代码中必须使用英文符号，中文符号会导致语法错误</p>
+                    </div>
+                    <div class="error-solution">
+                        <h4>解决方案:</h4>
+                        <p>1. 请切换到英文输入法重新输入</p>
+                        <p>2. 将中文符号替换为对应的英文符号：</p>
+                        <ul>
+                            <li>中文逗号（，）→ 英文逗号（,）</li>
+                            <li>中文冒号（：）→ 英文冒号（:）</li>
+                            <li>中文分号（；）→ 英文分号（;）</li>
+                            <li>中文括号（（））→ 英文括号（()）</li>
+                        </ul>
+                        <p>3. 参考右侧"常见错误示例"中的正确写法</p>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    // 2. 检测括号匹配
+    const stack = [];
+    for (let i = 0; i < code.length; i++) {
+        if (code[i] === '(') stack.push(i);
+        else if (code[i] === ')') {
+            if (stack.length === 0) {
+                return `
+                    <div class="error">
+                        <div class="error-header">
+                            <i class="fas fa-exclamation-triangle fa-2x"></i>
+                            <h3 class="error-title">括号不匹配</h3>
+                        </div>
+                        <div class="error-content">
+                            <p><strong>错误详情:</strong> 检测到多余的右括号 )</p>
+                            <div class="error-explanation">
+                                <h4>错误分析：</h4>
+                                <p>每个右括号 ) 必须有一个对应的左括号 (</p>
+                            </div>
+                            <div class="error-solution">
+                                <h4>解决方案:</h4>
+                                <p>1. 检查函数定义中的括号是否成对出现</p>
+                                <p>2. 删除多余的右括号</p>
+                                <p>3. 或者添加缺失的左括号</p>
+                                <p>4. 使用代码编辑器的括号匹配功能检查</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            stack.pop();
+        }
+    }
+
+    if (stack.length > 0) {
+        return `
+            <div class="error">
+                <div class="error-header">
+                    <i class="fas fa-exclamation-triangle fa-2x"></i>
+                    <h3 class="error-title">括号不匹配</h3>
+                </div>
+                <div class="error-content">
+                    <p><strong>错误详情:</strong> 检测到未闭合的左括号 (</p>
+                    <div class="error-explanation">
+                        <h4>错误分析：</h4>
+                        <p>每个左括号 ( 必须有一个对应的右括号 )</p>
+                    </div>
+                    <div class="error-solution">
+                        <h4>解决方案:</h4>
+                        <p>1. 检查函数定义末尾是否缺少右括号 )</p>
+                        <p>2. 在函数头末尾添加缺失的右括号</p>
+                        <p>3. 检查参数列表中的括号是否完整</p>
+                        <p>4. 使用代码编辑器的括号匹配功能检查</p>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    return null;
+}
+
 // 检查语法
 async function checkSyntax() {
     if (!isPyodideLoaded) {
@@ -116,6 +212,13 @@ async function checkSyntax() {
                 </div>
             </div>
         `;
+        return;
+    }
+    
+    // 首先进行自定义错误检测（中文符号和括号匹配）
+    const customError = detectCustomErrors(code);
+    if (customError) {
+        feedbackContent.innerHTML = customError;
         return;
     }
     
@@ -242,6 +345,13 @@ function getErrorExplanation(error) {
         return '函数名不能以数字开头，这是Python的语法规则。';
     }
     
+    // 添加对中文符号错误的检测
+    if (lowerError.includes('无效的字符') || 
+        lowerError.includes('invalid character') || 
+        lowerError.includes('unexpected character')) {
+        return '代码中包含Python不允许的特殊字符，特别是中文符号（如中文逗号、冒号、括号等）';
+    }
+    
     if (lowerError.includes('语法错误') || lowerError.includes('syntaxerror')) {
         return '函数定义结构不正确，请检查def关键字、函数名、括号和冒号的使用。';
     }
@@ -313,12 +423,19 @@ function getErrorSolution(error) {
             <p>4. 参考右侧"无效函数名"示例</p>
         `;
     }
-    if (lowerError.includes('括号')) {
+    if (lowerError.includes('括号未关闭') || 
+        lowerError.includes('意外的右括号') || 
+        lowerError.includes('括号')) {
         return `
-            <p>1. 检查所有括号是否成对出现</p>
+            <p>1. 检查函数定义中的括号是否成对出现</p>
             <p>2. 确保参数列表使用圆括号 <code>()</code></p>
-            <p>3. 检查是否有不匹配的括号</p>
-            <p>4. 确保函数定义末尾没有多余的括号</p>
+            <p>3. 使用代码高亮编辑器帮助匹配括号</p>
+            <p>4. 常见错误模式：</p>
+            <ul style="margin-top:5px">
+                <li><code>def my_func(参数1, 参数2</code> → 缺少右括号</li>
+                <li><code>def my_func参数1, 参数2):</code> → 缺少左括号</li>
+                <li><code>def my_func((参数1, 参数2):</code> → 多余左括号</li>
+            </ul>
         `;
     }
     
